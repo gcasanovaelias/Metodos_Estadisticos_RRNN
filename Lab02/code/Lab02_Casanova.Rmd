@@ -1,0 +1,115 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+# Paquetes
+library(lme4)
+library(tidyverse)
+library(tidymodels)
+
+tidymodels_prefer()
+
+require(readxl)
+
+# Data
+(data <- read_xlsx("Lab02/data/arbolesInventario.xlsx") %>% 
+    mutate(rodal = as_factor(rodal),
+           parcela = as_factor(parcela),
+           arbol = as_factor(arbol)))
+
+glimpse(data)
+
+summary(data)
+
+attach(data)
+
+```
+
+```{r}
+
+# Selección de 30 rodales
+set.seed(2)
+(select_rodal <- data %>% slice_sample(n = 30, replace = F) %>% pull(rodal))
+
+(data_selected <- data %>% filter(rodal %in% select_rodal))
+
+
+# ¿Cuántas parcelas tiene cada rodal escogido?
+data_selected %>% group_by(rodal) %>% distinct(parcela) %>% summarise(n_parcelas = n())
+
+```
+
+```{r}
+
+# a. Observaciones independientes
+(model_a <- lm(
+  formula = I(log(altura)) ~ I(1/sqrt(dap)),
+  data = data_selected
+))
+
+# b. Coeficiente aleatorio 𝛽0 para cada rodal
+(model_b <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ 1|rodal,
+  data = data_selected
+))
+
+# c. coeficiente aleatorio 𝛽1 para cada rodal
+(model_c <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ dap|rodal,
+  data = data_selected
+))
+
+# d. Coeficientes aleatorios 𝛽0 y 𝛽1 para cada rodal
+(model_d <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ 1 + dap|rodal,
+  data = data_selected
+))
+
+# e. Coeficiente aleatorio 𝛽0 para cada parcela
+(model_e <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ 1|parcela,
+  data = data_selected
+))
+
+# f. Coeficiente aleatorio 𝛽1 para cada parcela
+(model_f <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ dap|parcela,
+  data = data_selected
+))
+
+# g. Coeficientes aleatorios 𝛽0 y 𝛽1 para cada parcela
+(model_g <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ 1 + dap|parcela,
+  data = data_selected
+))
+
+# h. Coeficiente aleatorio 𝛽0 para cada rodal y un coeficiente aleatorio 𝛽1 para cada parcela
+(model_h <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ 1|rodal + dap|parcela,
+  data = data_selected
+))
+
+# i. coeficiente aleatorio 𝛽0 para cada parcela y un coeficiente aleatorio 𝛽1 para cada rodal
+(model_i <- lme(
+  fixed = I(log(altura)) ~ I(1/sqrt(dap)),
+  random = ~ dap|rodal + 1|parcela,
+  data = data_selected
+))
+
+```
+
+```{r}
+
+
+
+```

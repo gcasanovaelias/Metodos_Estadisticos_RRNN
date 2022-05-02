@@ -1,0 +1,349 @@
+---
+title: 'Taller #1. MERN. Regresión Lineal y no Lineal'
+subtitle: 'Giancarlo Casanova Elias'
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+# Paquetes y datos
+
+```{r message=FALSE, warning=FALSE}
+
+# Packages
+library(tidyverse)
+library(readxl)
+library(car)
+
+# Data 
+data_full <- read_excel("Lab01/data/CrecimientoPR.xlsx")
+
+```
+
+# 1. Selección aleatoria
+
+Del total de datos (\~5000) se procede a seleccionar aleatoriamente 1000 observaciones.
+
+```{r message=FALSE}
+
+# Random selection of rows
+set.seed(1)
+data_sub <- slice_sample(.data = data_full, n = 1000)
+
+```
+
+# 2. Ajuste de modelos
+
+Se ajustan tres modelos (lineal, no-lineal y linealizado) con el objetivo de predecir la variable IAPG.
+
+```{r}
+
+# Modelo A: Linealizado
+model_a <- lm(
+  formula = I(log(IAPG + 0.1)) ~ I(log(DAP)) + I(log(BAL + 0.1)) + I(log(H200_D)),
+  data = data_sub
+)
+
+summary(model_a)
+
+# Modelo B: Lineal
+model_b <- lm(
+  formula = IAPG ~ DAP + BAL + GHA_D + EDAD,
+  data = data_sub
+)
+
+summary(model_b)
+
+# Modelo c: No Lineal
+model_c <- nls(
+  formula = (IAPG + .1) ~ a*(DAP^b)*((BAL + .1)^c)*H200_D^d,
+  data = data_sub,
+  start = c(a = 0.9, b = 0.9, c = 0.9, d = 0.9)
+)
+
+summary(model_c)
+
+```
+
+En el caso del modelo A, la estimación del parámetro para la variable `log(BAL + 0.1)` no presenta significancia estadística (presenta p-value \> 0.05). Con el objetivo de obtener un modelo parsimonioso es que se procederá a eliminar dicha variable.
+
+```{r}
+
+# Modelo A: Linealizado
+model_a <- lm(
+  formula = I(log(IAPG + 0.1)) ~ I(log(DAP)) + I(log(H200_D)),
+  data = data_sub
+)
+
+summary(model_a)
+
+```
+
+# 3. Gráficos
+
+## Modelo A
+
+```{r echo=TRUE}
+
+# Residuos ~ Predichos
+plot(
+  x = model_a$fitted.values, 
+  y = model_a$residuals
+)
+
+# Residuales studentizados ~ DAP
+plot(
+  x = data_sub$DAP,
+  y = model_a$residuals/sd(model_a$residuals)
+)
+
+# leverages ~ Observados
+plot(
+  x = model_a$fitted.values,
+  y = lm.influence(model_a)$hat
+)
+
+# Normal plot de residuos
+plot(
+  x = model_a, 
+  which = 2
+)
+
+# Observados ~ Predichos
+plot(
+  x = model_a$fitted.values,
+  y = data_sub$IAPG %>% log()
+)
+```
+
+------------------------------------------------------------------------
+
+## Modelo B
+
+```{r echo=TRUE}
+
+# Residuos ~ Predichos
+plot(
+  x = model_b$fitted.values, 
+  y = model_b$residuals
+)
+
+# Residuales studentizados ~ DAP
+plot(
+  x = data_sub$DAP,
+  y = model_b$residuals/sd(model_b$residuals)
+)
+
+# leverages ~ Observados
+plot(
+  x = model_b$fitted.values,
+  y = lm.influence(model_b)$hat
+)
+
+# Normal plot de residuos
+plot(
+  x = model_b, 
+  which = 2
+)
+
+# Observados ~ Predichos
+plot(
+  x = model_b$fitted.values,
+  y = data_sub$IAPG %>% log()
+)
+```
+
+------------------------------------------------------------------------
+
+## Modelo C
+
+```{r echo=TRUE}
+
+# Residuos ~ Predichos
+plot(
+  x = predict(model_c, data_sub), 
+  y = predict(model_c, data_sub) - data_sub$IAPG
+)
+
+# Residuales studentizados ~ DAP
+plot(
+  x = data_sub$DAP,
+  y = (predict(model_c, data_sub) - data_sub$IAPG)/sd(predict(model_c, data_sub))
+)
+
+# Normal plot de residuos
+plot(
+  x = predict(model_c, data_sub) %>% quantile(),
+  y = ((predict(model_c, data_sub) - data_sub$IAPG)/sd(predict(model_c, data_sub))) %>% quantile()
+)
+
+# Observados ~ Predichos
+plot(
+  x = predict(model_c, data_sub),
+  y = data_sub$IAPG
+)
+```
+
+# 4. Error promedio
+
+El error promedio se estimará en base al *bias* o sesgo para cada uno de los modelos. Esta métrica corresponde al promedio de cada uno de los errores permitiendo determinar si el modelo sobre o subestima el valor de la variable respuesta en sus predichos con respecto a los valores observados.
+
+```{r}
+
+# Modelo A
+model_a$residuals %>% mean()
+
+# Modelo B
+model_b$residuals %>% mean()
+
+# Modelo C
+(predict(model_c, data_sub) - data_sub$IAPG) %>% mean()
+
+```
+
+De esta manera:
+
+-   El modelo A tiende a sobre-estimar los valores de Ln(IAPG) en 1.296538e-17 unidades en promedio al comparar las predicciones con los valores observados.
+
+-   El modelo B tiende a sobre-estimar los valores de IAPG en 4.610114e-16 unidades en promedio.
+
+-   El modelo C tiende a sobreestimar los valores de IAPG en 0.2925553 unidades en promedio.
+
+> Todos los modelos tienden a sobre estimar IAPG siendo el modelo A y C los que presentan menor y mayor bias.
+
+# 5. Selección de modelos
+
+## 5.1. Métricas de ajuste
+
+### Modelo A
+
+```{r}
+
+# Mean Squared Error (MSE)
+var(model_a$residuals)
+
+# Root Mean Squared Error (RMSE)
+sd(model_a$residuals)
+
+# Mean Absolute Error (MAE)
+model_a$residuals %>% abs() %>% mean()
+
+```
+
+Los residuos tienden a presentar una varianza y desviación estándar de 0.4768 y 0.6905, respectivamente. Los errores tiende a presentar una precisión de 0.4372 unidades.
+
+------------------------------------------------------------------------
+
+### Modelo B
+
+```{r}
+
+# Mean Squared Error (MSE)
+var(model_b$residuals)
+
+# Root Mean Squared Error (RMSE)
+sd(model_b$residuals)
+
+# Mean Absolute Error (MAE)
+model_b$residuals %>% abs() %>% mean()
+
+```
+
+Los residuos tienden a tener una precisión de 16.01 unidades en la predicción con una varianza y desviación estándar de 468.65 y 21.65, respectivamente.
+
+------------------------------------------------------------------------
+
+### Modelo C
+
+```{r}
+
+# Mean Squared Error (MSE)
+(predict(model_c, data_sub) - data_sub$IAPG) %>% var()
+
+# Root Mean Squared Error (RMSE)
+(predict(model_c, data_sub) - data_sub$IAPG) %>% sd()
+
+# Mean Absolute Error (MAE)
+(predict(model_c, data_sub) - data_sub$IAPG) %>% abs() %>% mean()
+
+```
+
+El modelo C presenta una diferencia de 16.56 unidades, en promedio, entre lo que predice y los valores observados además de una varianza y desviación estándar de 520.90 y 22.82, respectivamente.
+
+------------------------------------------------------------------------
+
+#### Selección de modelo en base a métricas de ajuste
+
+> A pesar de que el modelo A presenta mejores métricas de ajuste debemos recordar que este se encuentra ajustado con las variables transformadas a logaritmo natural. Debido a que se desea trabajar con las variables originales es que la selección se reduce a los modelos B y C.
+
+Se selecciona el modelo B debido a que presenta el menor MAE de ambos modelos lo que se interpreta como una mayor precisión para la predicción de datos. Además, el modelo B tambien presenta valores más bajos de MSE y RMSE que el modelo C por lo que la variabilidad de los errores en el primer modelo tienden a ser menores en cuanto al segundo.
+
+# 6. Modelo B y sus características
+
+## Heterocedasticidad
+
+```{r}
+
+# Score Test for Non-Constant Error Variance (ncv)
+ncvTest(model_b)
+
+```
+
+Con un p-value \< 2.22e-16 (\<0.05) hay suficiente evidencia en los datos para rechazar H0 (H0: var resid constante) de manera que los datos presentan heterocedasticidad, es decir, por cada nivel de *x* existe una variación distinta en *y*.
+
+## Normalidad de residuos
+
+```{r}
+
+# Shapiro-Wilk Normality Test
+shapiro.test(model_b$residuals)
+
+```
+
+Con un p-value \< 2.2e-16 (\< 0.05) hay suficiente evidencia en los datos para rechazar H0 y decir que los residuos poseen una distribución normal. Esto significa que el supuesto de normalidad se cumple y que es apropiado aplicar el modelo lineal.
+
+## Capacidad de predicción del incremento en DAP (IAPD)
+
+```{r}
+
+# R squared (R2)
+summary(model_b)$r.squared
+
+```
+
+El modelo B explica un 54.93% de la variabilidad de IAPG.
+
+## Multicolinealidad
+
+```{r}
+
+# Variance Inflation Factors (vif)
+
+# Regla 1
+vif(model_b) > 5
+
+# Regla 2
+model_b %>% vif() %>% sqrt() > 1
+
+# Regla 3
+model_b %>% vif() %>% mean() > 1
+
+```
+
+Según las tres *reglas* empleadas, el modelo presenta un alto grado de multicolinearidad, es decir, correlación entre las variables predictoras empleadas.
+
+```{r}
+
+# Análisis de asociatividad
+cor(data_sub[, c("DAP", "BAL", "GHA_D", "EDAD")])
+```
+
+El modelo presenta una elevada multcolinearidad producto de, posiblemente, el alto grado de correlación entre:
+
+-   EDAD y DAP (0.823)
+
+-   GHA_D y DAP (0.465)
+
+Para mejorar esta multicolinearidad podríamos eliminar la variable DAP y ajustar un nuevo modelo.
